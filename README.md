@@ -46,6 +46,9 @@ graph LR
   A([Input Source / Clipboard]) --> B[[Buffer & Classifier]]
   B --> C[[AI Processing Worker]]
   C --> D[(Output / Result Handler)]
+```
+
+---
 
 ## 👨‍💻 Autor
 
