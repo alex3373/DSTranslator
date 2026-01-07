@@ -5,7 +5,7 @@ import re
 import aiohttp
 from dotenv import load_dotenv
 
-from characters import KNOWN_CHARACTERS
+from characters import KNOWN_NAMES
 
 load_dotenv()
 

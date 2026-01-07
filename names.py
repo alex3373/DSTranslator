@@ -1,6 +1,6 @@
 
 
-KNOWN_CHARACTERS = {
+KNOWN_NAMES = {
     # Example
     "航",
     "奈緒子",
