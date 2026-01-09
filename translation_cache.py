@@ -17,19 +17,51 @@ class TranslationCache:
         Normaliza el texto para mejor matching
         ✅ MEJORADO: +10-15% cache hit rate
         """
+        # --------------------------
+        # Normalización base (existente)
+        # --------------------------
+
         # Remueve espacios extra, newlines múltiples
         normalized = ' '.join(text.strip().split())
         
-        # ✅ NUEVO: Normalizar comillas japonesas
+        # ✅ EXISTENTE: Normalizar comillas japonesas
         normalized = normalized.replace('『', '「').replace('』', '」')
         
-        # ✅ NUEVO: Normalizar puntos suspensivos
+        # ✅ EXISTENTE: Normalizar puntos suspensivos
         normalized = normalized.replace('…', '...')
         
-        # ✅ NUEVO: Remover espacios alrededor de comillas
+        # ✅ EXISTENTE: Remover espacios alrededor de comillas japonesas
         normalized = re.sub(r'\s*「\s*', '「', normalized)
         normalized = re.sub(r'\s*」\s*', '」', normalized)
-        
+
+        # --------------------------
+        # ➕ EXTENSIÓN MULTI-IDIOMA
+        # (NO elimina lo anterior)
+        # --------------------------
+
+        # Normalizar comillas comunes (inglés, francés, alemán, etc.)
+        QUOTE_MAP = {
+            '“': '"',
+            '”': '"',
+            '„': '"',
+            '«': '"',
+            '»': '"',
+            '‘': "'",
+            '’': "'",
+            '‚': "'",
+        }
+
+        for src, dst in QUOTE_MAP.items():
+            normalized = normalized.replace(src, dst)
+
+        # Remover espacios alrededor de comillas comunes
+        normalized = re.sub(r'\s*"\s*', '"', normalized)
+        normalized = re.sub(r"\s*'\s*", "'", normalized)
+
+        # --------------------------
+        # Hash para textos largos
+        # --------------------------
+
         # Si es muy largo, usa hash
         if len(normalized) > 200:
             return hashlib.md5(normalized.encode()).hexdigest()

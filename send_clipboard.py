@@ -7,7 +7,7 @@ from deepseek_client import DeepSeekClient
 from translation_cache import TranslationCache
 from sqlite_store import SQLiteTranslationStore
 from speech_buffer import SpeechBuffer
-from characters import KNOWN_CHARACTERS
+from names import KNOWN_NAMES
 
 from translation_worker import TranslationWorker
 from clipboard_watcher import ClipboardWatcher
@@ -42,7 +42,7 @@ worker = TranslationWorker(
     deepseek=deepseek,
     cache=cache,
     sqlite_cache=sqlite_cache,
-    known_characters=KNOWN_CHARACTERS,
+    KNOWN_NAMES=KNOWN_NAMES,
     pending_max=PENDING_MAX
 )
 

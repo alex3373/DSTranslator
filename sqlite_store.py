@@ -30,8 +30,41 @@ class SQLiteTranslationStore:
     def _normalize_key(self, text: str) -> str:
         """
         Normaliza texto para matching estable entre sesiones
+        (alineado con TranslationCache RAM)
         """
+        # --------------------------
+        # Normalización base (existente)
+        # --------------------------
         normalized = ' '.join(text.strip().split())
+
+        # --------------------------
+        # ➕ EXTENSIÓN MULTI-IDIOMA
+        # (NO elimina nada existente)
+        # --------------------------
+
+        # Normalizar puntos suspensivos
+        normalized = normalized.replace('…', '...')
+
+        # Normalizar comillas comunes y japonesas
+        QUOTE_MAP = {
+            '“': '"',
+            '”': '"',
+            '„': '"',
+            '«': '"',
+            '»': '"',
+            '‘': "'",
+            '’': "'",
+            '‚': "'",
+            '『': '「',
+            '』': '」',
+        }
+
+        for src, dst in QUOTE_MAP.items():
+            normalized = normalized.replace(src, dst)
+
+        # --------------------------
+        # Hash para textos largos
+        # --------------------------
 
         # textos largos → hash
         if len(normalized) > 200:

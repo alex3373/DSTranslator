@@ -1,11 +1,11 @@
-# Versión SIN streaming 
+# Versión SIN streaming (multi-idioma)
 
 import os
 import re
 import aiohttp
 from dotenv import load_dotenv
 
-from characters import KNOWN_NAMES
+from names import KNOWN_NAMES
 
 load_dotenv()
 
@@ -13,16 +13,22 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 
 class DeepSeekClient:
-    def __init__(self):
+    def __init__(self, target_language: str = "English"):
         self.api_key = os.getenv("DEEPSEEK_API_KEY")
         if not self.api_key:
             raise RuntimeError("DEEPSEEK_API_KEY no definida")
 
-        known_list = "、".join(sorted(KNOWN_CHARACTERS))
+        self.target_language = target_language
 
-        # 🔒 SYSTEM PROMPT FINAL (optimizado)
+        # Separador neutro
+        known_list = ", ".join(sorted(KNOWN_NAMES))
+
         self.system_prompt = (
-            "You are a Japanese → English translator for narration propose.\n\n"
+            "You are a translation engine for narration and dialogue.\n\n"
+
+            "TASK:\n"
+            "- Automatically detect the source language.\n"
+            f"- Translate the text into {self.target_language}.\n\n"
 
             "RULES:\n"
             "- A character name at the START of a line is the SPEAKER.\n"
@@ -49,38 +55,27 @@ class DeepSeekClient:
         if not text:
             return None, text
 
-        # 1️⃣ Romaji: Name: text
-        m = re.match(r"^([A-Z][a-z]{2,15})[：:]\s*(.+)?", text)
-        if m and m.group(1) in KNOWN_CHARACTERS:
+        # 1️⃣ Name: text (latino)
+        m = re.match(r"^([A-Z][a-z]{1,20})[：:]\s*(.+)?", text)
+        if m and m.group(1) in KNOWN_NAMES:
             return m.group(1), (m.group(2) or "").strip()
 
         # Limpieza básica de comillas
-        t = text.strip("「」『』")
+        t = text.strip("「」『』\"'")
 
         # 2️⃣ Nombre en línea separada
         lines = t.split("\n")
         if len(lines) >= 2:
             name = lines[0].strip()
-            if name in KNOWN_CHARACTERS:
+            if name in KNOWN_NAMES:
                 return name, "\n".join(lines[1:]).strip()
 
-        # 3️⃣ Nombre「dialogo」
-        m = re.match(r"^([ぁ-んァ-ヶー一-龯]{1,10})「(.+)", t)
-        if m and m.group(1) in KNOWN_CHARACTERS:
-            return m.group(1), m.group(2).rstrip("」").strip()
-
-        # 4️⃣ Nombre: dialogo
-        m = re.match(r"^([ぁ-んァ-ヶー一-龯]{1,10})[：:]\s*(.+)", t)
-        if m and m.group(1) in KNOWN_CHARACTERS:
-            return m.group(1), m.group(2).strip()
-
-        # ✅ 5️⃣ CLAVE: Nombre + texto SIN separador 
-        # Ej: 航変わりすぎだろこれは…
-        for name in KNOWN_CHARACTERS:
-            if t.startswith(name) and len(t) > len(name):
-                dialogue = t[len(name):].strip()
-                if dialogue:
-                    return name, dialogue
+        # 3️⃣ / 4️⃣ Nombre pegado o con separador
+        for name in KNOWN_NAMES:
+            if t.startswith(name):
+                rest = t[len(name):].lstrip(" :：,")
+                if rest:
+                    return name, rest.strip()
 
         return None, text
 
@@ -103,36 +98,28 @@ class DeepSeekClient:
                 return data["choices"][0]["message"]["content"]
 
     # ==========================
-    # PUBLIC TRANSLATE
+    # PUBLIC TRANSLATE (NO STREAM)
     # ==========================
-    def translate_stream(self, text_jp: str, context: str = ""):
+    def translate_stream(self, text: str, context: str = ""):
         async def _gen():
-            speaker, dialogue = self._extract_speaker(text_jp)
+            speaker, dialogue = self._extract_speaker(text)
 
             use_context = bool(context and dialogue and len(dialogue) > 15)
-            print(
-                f"[Context] use={use_context} | "
-                f"dialogue_len={len(dialogue)} | "
-                f"context_len={len(context) if context else 0}"
-            )
 
             messages = []
 
-            # System (cacheado)
             messages.append({
                 "role": "system",
                 "content": self.system_prompt,
                 "cache_control": {"type": "ephemeral"}
             })
 
-            # Contexto previo (no cacheado)
             if use_context:
                 messages.append({
                     "role": "user",
                     "content": f"Previous lines:\n{context}"
                 })
 
-            # Mensaje principal
             content = dialogue
             if speaker:
                 content = f"[SPEAKER: {speaker}]\n{content}"
@@ -156,7 +143,6 @@ class DeepSeekClient:
 
             result = await self._request_once(payload, headers)
 
-            # Prefijo SOLO aquí (UI)
             if speaker:
                 yield f"{speaker}: {result}"
             else:

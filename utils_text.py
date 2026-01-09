@@ -1,49 +1,62 @@
 import re
 
 
-def contiene_japones(texto: str) -> bool:
-    return any(
-        '\u3040' <= c <= '\u30ff' or '\u4e00' <= c <= '\u9faf'
-        for c in texto
-    )
+# Interjecciones universales (cortas, no semánticas)
+INTERJECTIONS = {
+    # inglés / general
+    "uh", "um", "eh", "oh", "ah", "hmm", "hm",
+    # español
+    "ah", "oh", "mmm",
+    # francés
+    "euh",
+    # alemán
+    "äh",
+}
 
 
 def es_dialogo_trivial(dialogo: str) -> bool:
-    t = dialogo.strip("「」『』 ")
+    t = dialogo.strip()
 
+    if not t:
+        return True
+
+    # 1️⃣ Muy corto
     if len(t) <= 1:
         return True
 
-    if re.fullmatch(r"[…。・]+", t):
+    # 2️⃣ Solo puntuación / pausas
+    if re.fullmatch(r"[.!?…·,;:¡¿\-–—]+", t):
         return True
 
-    if re.fullmatch(r"[！？!?]+", t):
+    # 3️⃣ Repetición del mismo carácter (mmm, aaa, ???)
+    if len(set(t.lower())) == 1:
         return True
 
-    if re.fullmatch(r"[っッ]+", t):
+    # 4️⃣ Interjecciones conocidas
+    if t.lower() in INTERJECTIONS:
         return True
 
     return False
 
 
-def detectar_speaker_inline(dialogo: str, known_names=None):
+def detectar_speaker_inline(texto: str, known_names=None):
     """
-    Detecta speaker pegado al inicio:
-    奈緒子「...」
-    奈緒子…うん
+    Detecta speaker pegado al inicio del texto.
+    Ejemplos válidos:
+    - AlexHello
+    - Alex: Hello
+    - Alex, hello
+    - Alex… hi
     """
-    if not dialogo:
-        return None, dialogo
+    if not texto or not known_names:
+        return None, texto
 
-    t = dialogo.strip("「」『』")
+    t = texto.strip()
 
-    m = re.match(r'^([ぁ-んァ-ヶー一-龯]{2,10})([…。！？、])(.+)?', t)
-    if not m:
-        return None, dialogo
+    for name in known_names:
+        if t.startswith(name) and len(t) > len(name):
+            resto = t[len(name):].lstrip(" .,:;!?…")
+            if resto:
+                return name, resto.strip()
 
-    name = m.group(1)
-    if known_names and name not in known_names:
-        return None, dialogo
-
-    resto = t[len(name):].lstrip("…。！？、")
-    return name, resto.strip()
+    return None, texto

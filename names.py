@@ -1,26 +1,56 @@
-
-
 KNOWN_NAMES = {
-    # Example
-    "航",
-    "奈緒子",
-    "静",
-    "海己",
-    "沙衣里",
-    "ちひろ",
-    "茜",
-    "宮穂",
-    "凛奈",
+    # ======================
+    # Generic personal names
+    # ======================
+    "Alex",
+    "Maria",
+    "Juan",
+    "Carlos",
+    "Ana",
+    "Luis",
+    "Pedro",
+    "Sofia",
+    "Daniel",
+    "Laura",
+    "Miguel",
+    "Elena",
+    "Diego",
+    "Paula",
 
-    # Side
-    "克彦",
-    "一誠",
-    "奈津江",
-    "隆史",
-    "伸二郎",
-    "紀子",
-    "博",
-    "雅文",
+    # ======================
+    # Short / casual names
+    # ======================
+    "Tom",
+    "Sam",
+    "Leo",
+    "Max",
+    "Nico",
+    "Vale",
+
+    # ======================
+    # Generic roles (speaker-safe)
+    # ======================
+    "Man",
+    "Woman",
+    "Boy",
+    "Girl",
+    "Child",
+    "Adult",
+    "Old man",
+    "Old woman",
+    "Clerk",
+    "Customer",
+    "Teacher",
+    "Doctor",
+    "Nurse",
+    "Mother",
+    "Father",
+    "Brother",
+    "Sister",
+
+    # ======================
+    # Narration-style speakers
+    # ======================
+    "Narrator",
+    "Voice",
 }
-  
-  
