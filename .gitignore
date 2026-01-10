@@ -2,3 +2,4 @@
 /__pycache__
 /.venv
 config/user_config.json
+/build
