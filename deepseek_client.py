@@ -1,23 +1,19 @@
 # Versión SIN streaming (multi-idioma)
 
-import os
 import re
 import aiohttp
-from dotenv import load_dotenv
 
 from names import KNOWN_NAMES
-
-load_dotenv()
 
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 
 class DeepSeekClient:
-    def __init__(self, target_language: str = "English"):
-        self.api_key = os.getenv("DEEPSEEK_API_KEY")
-        if not self.api_key:
-            raise RuntimeError("DEEPSEEK_API_KEY no definida")
+    def __init__(self, api_key: str, target_language: str = "English"):
+        if not api_key:
+            raise RuntimeError("DeepSeek API key no configurada")
 
+        self.api_key = api_key
         self.target_language = target_language
 
         # Separador neutro
@@ -48,7 +44,7 @@ class DeepSeekClient:
         )
 
     # ==========================
-    # SPEAKER DETECTION 
+    # SPEAKER DETECTION
     # ==========================
     def _extract_speaker(self, text: str):
         text = text.strip()
@@ -108,18 +104,21 @@ class DeepSeekClient:
 
             messages = []
 
+            # System prompt (ephemeral cache)
             messages.append({
                 "role": "system",
                 "content": self.system_prompt,
                 "cache_control": {"type": "ephemeral"}
             })
 
+            # Contexto previo
             if use_context:
                 messages.append({
                     "role": "user",
                     "content": f"Previous lines:\n{context}"
                 })
 
+            # Mensaje principal
             content = dialogue
             if speaker:
                 content = f"[SPEAKER: {speaker}]\n{content}"
@@ -143,6 +142,7 @@ class DeepSeekClient:
 
             result = await self._request_once(payload, headers)
 
+            # Prefijo SOLO para UI
             if speaker:
                 yield f"{speaker}: {result}"
             else:
