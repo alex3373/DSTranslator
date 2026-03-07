@@ -5,6 +5,13 @@ Pipeline backend para **procesamiento secuencial de texto asistido por LLM**, di
 
 [English](#english) | [Español](#español)
 
+## Demo / Demostración
+
+![DSTranslator demo](./assets/dstranslator-demo.gif)
+
+Backend in action through the companion overlay UI.  
+Backend en acción a través de la interfaz overlay complementaria.
+
 ---
 
 ## English
@@ -69,6 +76,12 @@ DSTranslator is designed as a modular backend composed of several responsibiliti
 - local HTTP API layer
 
 This allows the backend to stay decoupled from the UI and be reused by different local interfaces.
+
+### Internal Processing Log
+
+Example of the backend handling context, cache hits, speaker detection, and LLM responses during execution.
+
+![DSTranslator log](./assets/backend-log.png)
 
 ### Tech Stack
 
@@ -165,6 +178,12 @@ DSTranslator está diseñado como un backend modular compuesto por varias respon
 - capa de API HTTP local
 
 Esto permite que el backend permanezca desacoplado de la UI y pueda reutilizarse desde distintas interfaces locales.
+
+### Log interno de procesamiento
+
+Ejemplo del backend manejando contexto, cache, detección de hablante y respuestas del LLM durante la ejecución.
+
+![DSTranslator log](./assets/backend-log.png)
 
 ### Tecnologías
 
