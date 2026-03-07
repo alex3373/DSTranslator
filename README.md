@@ -1,60 +1,105 @@
 # DSTranslator
 
-Backend de un **pipeline de procesamiento de texto asistido por IA**, diseñado para manejar contenido estructurado y secuencial de forma confiable.  
-El sistema se enfoca en **preservar el orden del contenido**, **evitar pérdida de información** y **controlar el envío de texto a modelos de lenguaje** mediante buffering, batching y validaciones determinísticas.
+Backend pipeline for **LLM-assisted sequential text processing**, designed to handle structured or fragmented text reliably while preserving order, reducing redundant API calls, and minimizing information loss.
 
-Actualmente el repositorio contiene **únicamente la lógica de backend**. Componentes de interfaz u overlays podrán incorporarse en etapas posteriores.
-
----
-
-## 🧠 Descripción General
-
-DSTranslator implementa un flujo de procesamiento orientado a texto continuo, donde cada entrada es clasificada (trivial, corta o larga) para decidir su estrategia de envío y procesamiento.  
-La IA se utiliza como apoyo dentro del pipeline, mientras que la **orquestación, control de errores y consistencia** son responsabilidad del backend.
-
-El diseño es aplicable a múltiples escenarios como **procesamiento narrativo, análisis de logs, localización de contenido o flujos secuenciales de texto**.
+This repository contains the **backend engine** of the system.  
+For the desktop overlay and local UI, see **[overlay-multideep](https://github.com/alex3373/overlay-multideep)**.
 
 ---
 
-## ⚙️ Características Principales
+## Overview
 
-- Clasificación de entradas triviales, cortas y largas
-- Buffering y batching controlado para optimizar requests a LLMs
-- Prevención de pérdida de texto y duplicados
-- Preservación del orden lógico del contenido
-- Integración de IA de forma segura y controlada
-- Arquitectura backend desacoplada y extensible
+DSTranslator is a backend-oriented text processing pipeline built to support continuous or fragmented text flows when interacting with language models.
 
----
+Instead of sending raw text directly to an LLM, the system introduces a controlled processing layer that:
 
-## 🧰 Tecnologías Utilizadas
+- classifies incoming text
+- batches short fragments when appropriate
+- avoids duplicate processing
+- preserves logical order
+- reuses cached results
+- applies lightweight contextual assistance only when useful
 
-| Capa | Tecnología |
-|------|------------|
-| Lenguaje | Python |
-| Procesamiento | AsyncIO, colas y buffers en memoria |
-| IA | Integración con APIs de LLMs (ChatGPT, DeepSeek) |
-| Utilidades | Regex, clipboard listener |
-| Arquitectura | Backend modular, pipeline orientado a eventos |
+The goal is to make LLM-based translation or text transformation **more reliable, cost-aware, and resilient** for sequential content.
 
 ---
 
-## 🧱 Arquitectura General
+## Key Features
 
-```mermaid
-graph LR
-  A([Input Source / Clipboard]) --> B[[Buffer & Classifier]]
-  B --> C[[AI Processing Worker]]
-  C --> D[(Output / Result Handler)]
-```
+- **Sequential text processing pipeline**
+- **Input classification** for trivial, short, and long text
+- **Buffering and batching** for fragmented input
+- **RAM cache + persistent SQLite cache**
+- **Deduplication and text normalization**
+- **Mini-context support** for better continuity across lines
+- **Speaker detection support** for dialogue-oriented content
+- **Async task handling** with controlled pending queue
+- **Local HTTP API** for real-time integration with external interfaces
 
 ---
 
-## 👨‍💻 Autor
+## Architecture
+
+DSTranslator is designed as a modular backend composed of several responsibilities:
+
+- **Clipboard/input watcher**
+- **Speech/text buffer**
+- **Translation worker**
+- **LLM client integration**
+- **In-memory cache**
+- **Persistent SQLite store**
+- **Configuration manager**
+- **HTTP API layer (Flask)**
+
+This design allows the backend to remain decoupled from the UI, making it reusable for overlays, desktop tools, or other local clients.
+
+---
+
+## Tech Stack
+
+- **Python**
+- **AsyncIO**
+- **Flask**
+- **SQLite**
+- **aiohttp**
+- **Regex / text normalization utilities**
+
+LLM integrations currently include:
+- **DeepSeek**
+- **ChatGPT-compatible workflows**
+
+---
+
+## Use Cases
+
+Although originally developed around real-time text processing, the architecture is applicable to broader scenarios such as:
+
+- translation pipelines
+- localization workflows
+- dialogue/narrative processing
+- log or text stream analysis
+- sequential content transformation
+
+---
+
+## Related Repository
+
+Desktop overlay and local UI for this backend:  
+➡ **[overlay-multideep](https://github.com/alex3373/overlay-multideep)**
+
+---
+
+## Current Status
+
+The backend is functional and modular.  
+Packaging/distribution improvements and additional interface layers may be expanded further.
+
+---
+
+## Author
 
 **Alexis Córdova Díaz**  
-Analista Programador | Desarrollador Full Stack  
-📧 alexisandres311@gmail.com  
-🌐 [linkedin.com/in/alexis-andres-cordova](https://linkedin.com/in/alexis-andres-cordova)
+Full Stack Developer (Backend-oriented)  
 
----
+- GitHub: [alex3373](https://github.com/alex3373)
+- LinkedIn: [alexis-andres-cordova](https://www.linkedin.com/in/alexis-andres-cordova)
