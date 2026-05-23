@@ -1,5 +1,7 @@
 import asyncio
 import threading
+import time
+from telemetry import tracer, cache_hits, cache_misses, translations_total, queue_size
 
 from utils_text import (
     es_dialogo_trivial,
@@ -40,7 +42,7 @@ class TranslationWorker:
             "text": "",
             "id": 0,
             "busy": False,
-            "context_active": False,  # ✅ NUEVO: indicador para overlay/logo
+            "context_active": False,
         }
 
         self.pending_texts = []
@@ -59,7 +61,7 @@ class TranslationWorker:
                 "text": "",
                 "id": 0,
                 "busy": False,
-                "context_active": False,  # ✅ NUEVO
+                "context_active": False,
             })
         self.pending_texts.clear()
         self.mini_context.clear()
@@ -68,10 +70,6 @@ class TranslationWorker:
     # CACHE DIRECTO (para watcher)
     # ==========================
     def get_cached_translation(self, texto: str):
-        """
-        Devuelve traducción si está en cache (RAM o SQLite).
-        NO dispara requests.
-        """
         cached = self.cache.get(texto)
         if cached:
             return cached
@@ -84,14 +82,10 @@ class TranslationWorker:
         return None
 
     def set_current_translation(self, translated: str):
-        """
-        Actualiza inmediatamente el texto mostrado (sin async).
-        Usado solo en cache-hit inmediato desde el watcher.
-        """
         with self.translation_lock:
             self.current_translation["text"] = translated
             self.current_translation["id"] += 1
-            self.current_translation["context_active"] = False  # cache-hit no usa contexto
+            self.current_translation["context_active"] = False
 
     # ==========================
     # WORKER ASYNC
@@ -105,128 +99,146 @@ class TranslationWorker:
                 self.pending_texts.append(texto)
                 if len(self.pending_texts) > self.pending_max:
                     self.pending_texts.pop(0)
-
+                queue_size.add(1)
                 print(f"[Queue] Busy → encolado ({len(self.pending_texts)}): {texto[:60]}")
                 return
 
             self.current_translation["busy"] = True
 
-        try:
-            # ======================
-            # SPEAKER (informativo)
-            # ======================
-            speaker, dialogo = detectar_speaker_inline(
-                texto,
-                known_names=self.KNOWN_NAMES
-            )
+        with tracer.start_as_current_span("traducir_texto") as span:
+            span.set_attribute("texto.length", len(texto))
 
-            if not speaker:
-                speaker, dialogo = self.deepseek._extract_speaker(texto)
+            try:
+                # ======================
+                # SPEAKER (informativo)
+                # ======================
+                speaker, dialogo = detectar_speaker_inline(
+                    texto,
+                    known_names=self.KNOWN_NAMES
+                )
 
-            print(f"[Speaker] {speaker if speaker else '(narración)'}")
+                if not speaker:
+                    speaker, dialogo = self.deepseek._extract_speaker(texto)
 
-            # ======================
-            # FILTRO GLOBAL
-            # ======================
-            lineas = [l for l in texto.split("\n") if l.strip()]
-            if len(lineas) == 1 and es_dialogo_trivial(dialogo):
-                print(f"[Skip] Trivial: {dialogo}")
+                print(f"[Speaker] {speaker if speaker else '(narración)'}")
+                if speaker:
+                    span.set_attribute("speaker", speaker)
+
+                # ======================
+                # FILTRO GLOBAL
+                # ======================
+                lineas = [l for l in texto.split("\n") if l.strip()]
+                if len(lineas) == 1 and es_dialogo_trivial(dialogo):
+                    print(f"[Skip] Trivial: {dialogo}")
+                    span.set_attribute("resultado", "trivial_skip")
+                    with self.translation_lock:
+                        self.current_translation["context_active"] = False
+                    return
+
+                # ======================
+                # CACHE RAM
+                # ======================
+                cached = self.cache.get(texto)
+                if cached:
+                    print("[Cache] 💾 RAM HIT")
+                    cache_hits.add(1, {"type": "ram"})
+                    span.set_attribute("resultado", "cache_ram")
+                    with self.translation_lock:
+                        self.current_translation["text"] = cached
+                        self.current_translation["id"] += 1
+                        self.current_translation["context_active"] = False
+                    return
+
+                # ======================
+                # CACHE SQLITE
+                # ======================
+                cached = self.sqlite_cache.get(texto)
+                if cached:
+                    print("[Cache] 💿 SQLITE HIT")
+                    cache_hits.add(1, {"type": "sqlite"})
+                    span.set_attribute("resultado", "cache_sqlite")
+                    self.cache.set(texto, cached)
+                    with self.translation_lock:
+                        self.current_translation["text"] = cached
+                        self.current_translation["id"] += 1
+                        self.current_translation["context_active"] = False
+                    return
+
+                # ======================
+                # CACHE MISS → API
+                # ======================
+                cache_misses.add(1)
+                span.set_attribute("resultado", "api_call")
+
+                # ======================
+                # CONTEXTO (mini-context)
+                # ======================
+                use_context = len(texto) > 25 and len(self.mini_context) > 0
+                context_text = "\n".join(self.mini_context[-5:]) if use_context else ""
+
                 with self.translation_lock:
-                    self.current_translation["context_active"] = False
-                return
+                    self.current_translation["context_active"] = use_context
 
-            # ======================
-            # CACHE RAM
-            # ======================
-            cached = self.cache.get(texto)
-            if cached:
-                print("[Cache] 💾 RAM HIT")
+                if use_context:
+                    print(f"[Context] ✅ ON | mini_context={len(self.mini_context)} | send_lines={min(5, len(self.mini_context))}")
+                else:
+                    print(f"[Context] ⛔ OFF | mini_context={len(self.mini_context)}")
+
+                span.set_attribute("context_active", use_context)
+
+                # ======================
+                # API DeepSeek
+                # ======================
+                t_start = time.time()
+                resultado = ""
+                async for chunk in self.deepseek.translate_stream(
+                    text=texto,
+                    context=context_text
+                ):
+                    resultado += chunk
+
+                t_elapsed = time.time() - t_start
+                span.set_attribute("translation.duration_ms", round(t_elapsed * 1000))
+
+                resultado_final = resultado.strip()
+
                 with self.translation_lock:
-                    self.current_translation["text"] = cached
+                    self.current_translation["text"] = resultado_final
+                    self.current_translation["id"] += 1
+
+                self.cache.set(texto, resultado_final)
+                self.sqlite_cache.set(texto, resultado_final)
+
+                translations_total.add(1)
+                print(f"[API] 🌐 NEW ({round(t_elapsed*1000)}ms):\n{texto}\n→\n{resultado_final}\n")
+
+                # ======================
+                # MINI CONTEXTO (guardar)
+                # ======================
+                if not es_dialogo_trivial(dialogo):
+                    self.mini_context.append(resultado_final)
+                    if len(self.mini_context) > 8:
+                        self.mini_context.pop(0)
+
+            except Exception as e:
+                print(f"[Worker] Error: {e}")
+                span.record_exception(e)
+                with self.translation_lock:
+                    self.current_translation["text"] = f"[Error: {e}]"
                     self.current_translation["id"] += 1
                     self.current_translation["context_active"] = False
-                return
 
-            # ======================
-            # CACHE SQLITE
-            # ======================
-            cached = self.sqlite_cache.get(texto)
-            if cached:
-                print("[Cache] 💿 SQLITE HIT")
-                self.cache.set(texto, cached)
+            finally:
                 with self.translation_lock:
-                    self.current_translation["text"] = cached
-                    self.current_translation["id"] += 1
-                    self.current_translation["context_active"] = False
-                return
+                    self.current_translation["busy"] = False
 
-            # ======================
-            # CONTEXTO (mini-context)
-            # ======================
-            use_context = len(texto) > 25 and len(self.mini_context) > 0
-            context_text = "\n".join(self.mini_context[-5:]) if use_context else ""
+                queue_size.add(-1) if self.pending_texts else None
 
-            # ✅ NUEVO: flag + log para overlay/logo
-            with self.translation_lock:
-                self.current_translation["context_active"] = use_context
+                next_text = None
+                with self.translation_lock:
+                    if self.pending_texts:
+                        next_text = self.pending_texts.pop(0)
 
-            if use_context:
-                print(f"[Context] ✅ ON | mini_context={len(self.mini_context)} | send_lines={min(5, len(self.mini_context))}")
-            else:
-                print(f"[Context] ⛔ OFF | mini_context={len(self.mini_context)}")
-
-            # ======================
-            # API DeepSeek (NO stream)
-            # ======================
-            resultado = ""
-            async for chunk in self.deepseek.translate_stream(
-                text=texto,
-                context=context_text
-            ):
-                resultado += chunk
-
-            resultado_final = resultado.strip()
-
-            with self.translation_lock:
-                self.current_translation["text"] = resultado_final
-                self.current_translation["id"] += 1
-                # context_active ya quedó seteado arriba (y se mantiene para overlay)
-
-            self.cache.set(texto, resultado_final)
-            self.sqlite_cache.set(texto, resultado_final)
-
-            print(f"[API] 🌐 NEW:\n{texto}\n→\n{resultado_final}\n")
-
-            # ======================
-            # MINI CONTEXTO (guardar)
-            # ======================
-            if not es_dialogo_trivial(dialogo):
-                self.mini_context.append(resultado_final)
-                if len(self.mini_context) > 8:
-                    self.mini_context.pop(0)
-
-        except Exception as e:
-            print(f"[Worker] Error: {e}")
-            with self.translation_lock:
-                self.current_translation["text"] = f"[Error: {e}]"
-                self.current_translation["id"] += 1
-                self.current_translation["context_active"] = False
-
-        finally:
-            # ======================
-            # LIBERAR BUSY
-            # ======================
-            with self.translation_lock:
-                self.current_translation["busy"] = False
-
-            # ======================
-            # PROCESAR COLA
-            # ======================
-            next_text = None
-            with self.translation_lock:
-                if self.pending_texts:
-                    next_text = self.pending_texts.pop(0)
-
-            if next_text:
-                print(f"[Queue] Dequeue → traduciendo: {next_text[:60]}")
-                asyncio.create_task(self.traducir_texto(next_text))
+                if next_text:
+                    print(f"[Queue] Dequeue → traduciendo: {next_text[:60]}")
+                    asyncio.create_task(self.traducir_texto(next_text))
